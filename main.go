@@ -75,22 +75,22 @@ func init() {
 
 func main() {
 	log.Println("服务开始启动")
+	routerAddr := getEnv("ROUTER_ADDR", "192.168.1.1")
+	username := getEnv("USERNAME", "admin")
+	password := getEnv("PASSWORD", "admin")
+	log.Println("ROUTER_ADDR:", routerAddr, ", USERNAME:", username, ", PASSWORD:", password)
 	go func() {
-		intervalValue := 10
-		intervalStr := os.Getenv("SCRAP_INTERVAL")
-		if intervalStr != "" {
-			interval, err := strconv.Atoi(intervalStr)
-			if err != nil {
-				log.Fatal("无法将环境变量转换为整数:", err)
-			}
-			intervalValue = interval
+		intervalStr := getEnv("SCRAP_INTERVAL", "60")
+		interval, err := strconv.Atoi(intervalStr)
+		if err != nil {
+			log.Fatal("无法将环境变量转换为整数:", err)
 		}
-		log.Println("SCRAP_INTERVAL: ", intervalValue)
-		for range time.Tick(time.Duration(intervalValue) * time.Second) {
+		log.Println("SCRAP_INTERVAL: ", interval)
+		for range time.Tick(time.Duration(interval) * time.Second) {
 			log.Println("开始获取 Pon Stick 状态")
-			login()
-			ponStatus()
-			status()
+			login(routerAddr, username, password)
+			ponStatus(routerAddr)
+			status(routerAddr)
 		}
 	}()
 	log.Println("服务启动完成")
@@ -98,10 +98,19 @@ func main() {
 	log.Fatal(http.ListenAndServe(":9001", nil))
 }
 
-func login() {
+func getEnv(name, defaultValue string) string {
+	value := os.Getenv(name)
+	if value != "" {
+		return value
+	} else {
+		return defaultValue
+	}
+}
+
+func login(routerAddr, username, password string) {
 	log.Println("开始登陆")
-	url := "http://192.168.1.1/boaform/admin/formLogin"
-	payload := "challenge=&username=admin&password=admin&save=%E7%99%BB%E5%BD%95&submit-url=%2Fadmin%2Flogin.asp"
+	url := "http://" + routerAddr + "/boaform/admin/formLogin"
+	payload := "challenge=&username=" + username + "&password=" + password + "&save=%E7%99%BB%E5%BD%95&submit-url=%2Fadmin%2Flogin.asp"
 
 	req, err := http.NewRequest("POST", url, bytes.NewBufferString(payload))
 	if err != nil {
@@ -130,10 +139,10 @@ func login() {
 	log.Println("登陆成功")
 }
 
-func status() {
+func status(routerAddr string) {
 	log.Println("开始获取状态")
 
-	doc, _ := getData("http://192.168.1.1/admin/status.asp")
+	doc, _ := getData("http://" + routerAddr + "/admin/status.asp")
 	uptimeDoc := htmlquery.FindOne(doc, "/html/body/blockquote/form[1]/table[1]/tbody/tr[3]/td[2]/font")
 	uptimeDesc := uptimeDoc.FirstChild.Data
 	uptime := parseUptime(uptimeDoc)
@@ -201,9 +210,9 @@ func parseUptime(uptimeDoc *html.Node) float64 {
 	//return -2
 }
 
-func ponStatus() {
+func ponStatus(routerAddr string) {
 	log.Println("开始获取 pon 状态")
-	doc, _ := getData("http://192.168.1.1/status_pon.asp")
+	doc, _ := getData("http://" + routerAddr + "/status_pon.asp")
 
 	temperature := parseFloatValue(htmlquery.FindOne(doc, "/html/body/blockquote/table[2]/tbody/tr[2]/td[2]/font"))
 	voltage := parseFloatValue(htmlquery.FindOne(doc, "/html/body/blockquote/table[2]/tbody/tr[3]/td[2]/font"))
