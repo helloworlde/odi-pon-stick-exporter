@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,10 @@ import (
 var (
 	uptimeMetrics = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "pon_stick_uptime",
+		Help: "运行时间",
+	}, []string{})
+	uptimeDescMetrics = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "pon_stick_uptime_desc",
 		Help: "运行时间",
 	}, []string{"desc"})
 	cpuUsageMetrics = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -57,6 +62,7 @@ var (
 func init() {
 	log.Println("服务初始化")
 	prometheus.MustRegister(uptimeMetrics)
+	prometheus.MustRegister(uptimeDescMetrics)
 	prometheus.MustRegister(cpuUsageMetrics)
 	prometheus.MustRegister(memoryUsageMetrics)
 	prometheus.MustRegister(temperatureMetrics)
@@ -70,7 +76,17 @@ func init() {
 func main() {
 	log.Println("服务开始启动")
 	go func() {
-		for range time.Tick(10 * time.Second) {
+		intervalValue := 10
+		intervalStr := os.Getenv("SCRAP_INTERVAL")
+		if intervalStr != "" {
+			interval, err := strconv.Atoi(intervalStr)
+			if err != nil {
+				log.Fatal("无法将环境变量转换为整数:", err)
+			}
+			intervalValue = interval
+		}
+		log.Println("SCRAP_INTERVAL: ", intervalValue)
+		for range time.Tick(time.Duration(intervalValue) * time.Second) {
 			log.Println("开始获取 Pon Stick 状态")
 			login()
 			ponStatus()
@@ -128,13 +144,61 @@ func status() {
 	log.Println("CPU使用率:", cpuUsage)
 	log.Println("内存使用率:", memoryUsage)
 
-	uptimeMetrics.WithLabelValues(uptimeDesc).Set(0)
+	uptimeMetrics.WithLabelValues().Set(uptime)
+	uptimeDescMetrics.WithLabelValues(uptimeDesc).Set(uptime)
 	cpuUsageMetrics.WithLabelValues().Set(cpuUsage)
 	memoryUsageMetrics.WithLabelValues().Set(memoryUsage)
 }
 
-func parseUptime(one *html.Node) int64 {
-	return 0
+func parseUptime(uptimeDoc *html.Node) float64 {
+	uptimeString := uptimeDoc.LastChild.Data
+	uptimeString = strings.ReplaceAll(uptimeString, " ", "")
+	log.Println("运行时间: ", uptimeString)
+	// 24h以内: 20:13
+	if strings.Contains(uptimeString, ":") {
+		values := strings.Split(uptimeString, ":")
+		hours, err := strconv.Atoi(values[0])
+		if err != nil {
+			log.Println("解析时间-小时错误: ", uptimeString)
+			return -1
+		}
+		minutes, err := strconv.Atoi(values[1])
+		if err != nil {
+			log.Println("解析时间-分钟错误: ", uptimeString)
+			return -1
+		}
+
+		uptimeSecond := (hours*60 + minutes) * 60
+		return float64(uptimeSecond)
+	} else if strings.Contains(uptimeString, "day") {
+		// 大于24h: 1 day, 0 min
+		values := strings.Split(uptimeString, "day,")
+		days, err := strconv.Atoi(values[0])
+		if err != nil {
+			log.Println("解析时间-天错误: ", uptimeString)
+			return -1
+		}
+		values = strings.Split(values[1], "min")
+		minutes, err := strconv.Atoi(values[0])
+		if err != nil {
+			log.Println("解析时间-分钟错误: ", uptimeString)
+			return -1
+		}
+
+		uptimeSecond := (days*24*60 + minutes) * 60
+		return float64(uptimeSecond)
+	} else {
+		// 小于1h: 10
+		minutes, err := strconv.Atoi(uptimeString)
+		if err != nil {
+			log.Println("解析时间-天错误: ", uptimeString)
+			return -1
+		}
+		uptimeSecond := minutes * 60
+		return float64(uptimeSecond)
+	}
+	//log.Println("未知时间类型: ", uptimeString)
+	//return -2
 }
 
 func ponStatus() {
