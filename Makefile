@@ -1,7 +1,7 @@
 # 定义变量
-APP_NAME=pon-stick-metrics
+APP_NAME=pon-stick-exporter
 PORT=9001
-IMAGE_NAME=hellowoodes/pon-stick-metrics
+IMAGE_NAME=hellowoodes/pon-stick-exporter
 
 # 构建应用程序
 build:

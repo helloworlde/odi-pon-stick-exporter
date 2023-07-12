@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  pon-stick-exporter:
+    image: "hellowoodes/pon-stick-exporter"
+    restart: unless-stopped
+    container_name: "pon-stick-exporter"
+    hostname: pon-stick-exporter
+    ports:
+      - "9001:9001"
+    environment:
+      - SCRAP_INTERVAL=60
+      - ROUTER_ADDR=192.168.1.1
+      - USERNAME=admin
+      - PASSWORD=admin
