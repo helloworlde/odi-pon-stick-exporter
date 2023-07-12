@@ -5,6 +5,7 @@ import (
 	"github.com/antchfx/htmlquery"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	str2duration "github.com/xhit/go-str2duration"
 	"golang.org/x/net/html"
 	"io/ioutil"
 	"log"
@@ -145,7 +146,7 @@ func status(routerAddr string) {
 	doc, _ := getData("http://" + routerAddr + "/admin/status.asp")
 	uptimeDoc := htmlquery.FindOne(doc, "/html/body/blockquote/form[1]/table[1]/tbody/tr[3]/td[2]/font")
 	uptimeDesc := uptimeDoc.FirstChild.Data
-	uptime := parseUptime(uptimeDoc)
+	uptime := parseDuration(uptimeDoc.LastChild.Data)
 	cpuUsage := parsePercentValue(htmlquery.FindOne(doc, "/html/body/blockquote/form[1]/table[1]/tbody/tr[5]/td[2]/font"))
 	memoryUsage := parsePercentValue(htmlquery.FindOne(doc, "/html/body/blockquote/form[1]/table[1]/tbody/tr[6]/td[2]/font"))
 
@@ -159,55 +160,34 @@ func status(routerAddr string) {
 	memoryUsageMetrics.WithLabelValues().Set(memoryUsage)
 }
 
-func parseUptime(uptimeDoc *html.Node) float64 {
-	uptimeString := uptimeDoc.LastChild.Data
-	uptimeString = strings.ReplaceAll(uptimeString, " ", "")
-	log.Println("运行时间: ", uptimeString)
-	// 24h以内: 20:13
-	if strings.Contains(uptimeString, ":") {
-		values := strings.Split(uptimeString, ":")
-		hours, err := strconv.Atoi(values[0])
-		if err != nil {
-			log.Println("解析时间-小时错误: ", uptimeString)
-			return -1
-		}
-		minutes, err := strconv.Atoi(values[1])
-		if err != nil {
-			log.Println("解析时间-分钟错误: ", uptimeString)
-			return -1
-		}
+func parseDuration(durationStr string) float64 {
+	durationStr = strings.ReplaceAll(durationStr, ",", "")
+	durationStr = strings.ReplaceAll(durationStr, " ", "")
 
-		uptimeSecond := (hours*60 + minutes) * 60
-		return float64(uptimeSecond)
-	} else if strings.Contains(uptimeString, "day") {
-		// 大于24h: 1 day, 0 min
-		values := strings.Split(uptimeString, "day,")
-		days, err := strconv.Atoi(values[0])
-		if err != nil {
-			log.Println("解析时间-天错误: ", uptimeString)
-			return -1
-		}
-		values = strings.Split(values[1], "min")
-		minutes, err := strconv.Atoi(values[0])
-		if err != nil {
-			log.Println("解析时间-分钟错误: ", uptimeString)
-			return -1
-		}
-
-		uptimeSecond := (days*24*60 + minutes) * 60
-		return float64(uptimeSecond)
-	} else {
-		// 小于1h: 10
-		minutes, err := strconv.Atoi(uptimeString)
-		if err != nil {
-			log.Println("解析时间-天错误: ", uptimeString)
-			return -1
-		}
-		uptimeSecond := minutes * 60
-		return float64(uptimeSecond)
+	if strings.Contains(durationStr, "days") {
+		durationStr = strings.ReplaceAll(durationStr, "days", "d")
 	}
-	//log.Println("未知时间类型: ", uptimeString)
-	//return -2
+	if strings.Contains(durationStr, "day") {
+		durationStr = strings.ReplaceAll(durationStr, "day", "d")
+	}
+	if strings.Contains(durationStr, ":") {
+		durationStr = strings.ReplaceAll(durationStr, ":", "h")
+	}
+	if strings.Contains(durationStr, "min") {
+		durationStr = strings.ReplaceAll(durationStr, "min", "m")
+	}
+
+	if !strings.HasSuffix(durationStr, "m") {
+		durationStr = durationStr + "m"
+	}
+
+	duration, err := str2duration.Str2Duration(durationStr)
+	if err != nil {
+		log.Println("解析时间错误: ", durationStr, err)
+		return -1
+	}
+
+	return duration.Seconds()
 }
 
 func ponStatus(routerAddr string) {

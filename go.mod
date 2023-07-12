@@ -5,6 +5,8 @@ go 1.20
 require (
 	github.com/antchfx/htmlquery v1.3.0
 	github.com/prometheus/client_golang v1.16.0
+	github.com/xhit/go-str2duration v1.2.0
+	github.com/xhit/go-str2duration/v2 v2.1.0
 	golang.org/x/net v0.12.0
 )
 
